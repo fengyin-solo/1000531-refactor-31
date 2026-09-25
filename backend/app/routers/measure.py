@@ -30,6 +30,19 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/stats")
+def stats() -> dict[str, Any]:
+    """合格率等统计与判定结论同源，跟着每次判定更新。"""
+    return {"items": service.stats()}
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出电气测试清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "measure", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条测试单明细；不存在时给出可读的错误说明。"""
@@ -50,16 +63,9 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条测试单执行开始测试、判定合格、判定不合格；不允许的动作会被拦下并说明原因。"""
+    """对单条测试单执行动作：开始测试照旧；判定结论由服务端按同一份比较给出，可随动作提交测试值与参考区间。"""
     action = str(payload.values.get("action") or "").strip()
-    entry, message = service.run_action(entry_id, action)
+    entry, message = service.run_action(entry_id, action, payload.values)
     if entry is None:
         return ActionResult(ok=False, message=message)
-    return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出电气测试清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "measure", "total": total, "items": items}
+    return ActionResult(ok=True, message=message, entry=service.present_entry(entry))
